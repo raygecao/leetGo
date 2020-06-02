@@ -1,26 +1,75 @@
 # Golang CircleCI 2.0 configuration file
 #
 # Check https://circleci.com/docs/2.0/language-go/ for more details
-version: 2
+version: 2.1
+orbs:
+  codecov: codecov/codecov@1.0.2
 jobs:
-  build:
+  ut:
     docker:
       # specify the version
       - image: circleci/golang:1.13
+    parallelism: 2
 
-      # Specify service dependencies here if necessary
-      # CircleCI maintains a library of pre-built images
-      # documented at https://circleci.com/docs/2.0/circleci-images/
-      # - image: circleci/postgres:9.4
-
-    #### TEMPLATE_NOTE: go expects specific checkout path representing url
-    #### expecting it in the form of
-    ####   /go/src/github.com/circleci/go-tool
-    ####   /go/src/bitbucket.org/circleci/go-tool
     working_directory: /go/src/github.com/q1812911733/leetGo
+    environment:
+      - GOPROXY: https://goproxy.io,direct
     steps:
       - checkout
+      - restore_cache: # restores saved cache if no changes are detected since last run
+          keys:
+            - go-mod-v1-{{ checksum "go.sum" }}
+            - go-mod-v1
+      # - run: go test -v $(go list ./... | circleci tests split)
+      # refer to https://github.com/CircleCI-Public/circleci-demo-go/blob/master/.circleci/config.yml
+      - run: |
+          mkdir -p /tmp/test-results
+          gotestsum --junitfile /tmp/test-results/gotestsum-report.xml -- $(go list ./... | circleci tests split --split-by=timings --timings-type=classname)
 
-      # specify any bash command here prefixed with `run: `
-      - run: go get -v -t -d ./...
-      - run: go test -v ./...
+      - save_cache:
+          key: go-mod-v1-{{ checksum "go.sum" }}
+          paths:
+            - "/go/pkg/mod"
+      - store_test_results: # upload test results for display in Test Summary
+          path: /tmp/test-results
+
+  coverage:
+    docker:
+      # specify the version
+      - image: circleci/golang:1.13
+    working_directory: /go/src/github.com/q1812911733/leetGo
+    environment:
+      - GOPROXY: https://goproxy.io,direct
+    steps:
+      - checkout
+      - restore_cache: # restores saved cache if no changes are detected since last run
+          keys:
+            - go-mod-v1-{{ checksum "go.sum" }}
+      - run: |
+          mkdir -p /tmp/artifacts
+          go test -v ./... -coverprofile=cover.out -covermode=atomic
+          go tool cover -html=c.out -o coverage.html
+          mv coverage.html /tmp/artifacts
+      - save_cache:
+          key: go-mod-v1-{{ checksum "go.sum" }}
+          paths:
+            - "/go/pkg/mod"
+      - codecov/upload:
+          file: c.out
+      - store_test_results:
+          path: /tmp/artifacts
+      - store_artifacts:
+          path: /tmp/artifacts
+
+
+workflows:
+  test:
+    jobs:
+      - ut:
+          filters:
+            branches:
+              ignore: master
+      - coverage:
+          filters:
+            branches:
+              only: master
