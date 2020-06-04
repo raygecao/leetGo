@@ -4,60 +4,82 @@
 version: 2.1
 orbs:
   codecov: codecov/codecov@1.0.2
+  go: circleci/go@1.2.0 # https://circleci.com/orbs/registry/orb/circleci/go
+  tool: gotest/tools@0.0.13 # https://circleci.com/orbs/registry/orb/gotest/tools
+
+executors:
+  golang:
+    docker:
+      - image: circleci/golang:1.13
+
 jobs:
   ut:
-    docker:
-      # specify the version
-      - image: circleci/golang:1.13
-    parallelism: 2
-
+    executor: golang
     working_directory: /go/src/github.com/q1812911733/leetGo
-    environment:
-      - GOPROXY: https://goproxy.io,direct
+    parallelism: 2
+    steps:
+      - checkout
+      # restores saved cache if no changes are detected since last run
+      # don't use go/mod-download-cached directly in order to load cache in a fuzzy way
+      - restore_cache:
+          keys:
+            - go-mod-v1-{{ checksum "go.sum" }}
+            - go-mod-v1
+      - restore_cache:
+          keys:
+            - test-cache
+      - run: go test -v $(go list ./... | circleci tests split)
+      - save_cache:
+          key: test-cache
+          paths:
+            - /home/circleci/.cache/go-build
+
+# gotestsum has a better format and can combined with --Junit to output result as xml which can be displayed in test summary
+# refer to https://github.com/CircleCI-Public/circleci-demo-go/blob/master/.circleci/config.yml
+#      - run: |
+#          mkdir -p /tmp/test-results
+#          gotestsum --junitfile /tmp/test-results/gotestsum-report.xml -- $(go list ./... | circleci tests split --split-by=timings --timings-type=classname)
+#      - store_test_results: # upload test results for display in Test Summary
+#          path: /tmp/test-results
+
+      - go/save-cache:
+          key: go-mod-v1
+          path: /go/pkg/mod
+
+
+  coverage:
+    executor: golang
+    working_directory: /go/src/github.com/q1812911733/leetGo
     steps:
       - checkout
       - restore_cache: # restores saved cache if no changes are detected since last run
           keys:
             - go-mod-v1-{{ checksum "go.sum" }}
             - go-mod-v1
-      # - run: go test -v $(go list ./... | circleci tests split)
-      # refer to https://github.com/CircleCI-Public/circleci-demo-go/blob/master/.circleci/config.yml
-      - run: |
-          mkdir -p /tmp/test-results
-          gotestsum --junitfile /tmp/test-results/gotestsum-report.xml -- $(go list ./... | circleci tests split --split-by=timings --timings-type=classname)
-
-      - save_cache:
-          key: go-mod-v1-{{ checksum "go.sum" }}
-          paths:
-            - "/go/pkg/mod"
-      - store_test_results: # upload test results for display in Test Summary
-          path: /tmp/test-results
-
-  coverage:
-    docker:
-      # specify the version
-      - image: circleci/golang:1.13
-    working_directory: /go/src/github.com/q1812911733/leetGo
-    environment:
-      - GOPROXY: https://goproxy.io,direct
-    steps:
-      - checkout
-      - restore_cache: # restores saved cache if no changes are detected since last run
-          keys:
-            - go-mod-v1-{{ checksum "go.sum" }}
       - run: |
           mkdir -p /tmp/artifacts
           go test -v ./... -coverprofile=cover.out -covermode=atomic
           go tool cover -html=cover.out -o coverage.html
           mv coverage.html /tmp/artifacts
-      - save_cache:
-          key: go-mod-v1-{{ checksum "go.sum" }}
-          paths:
-            - "/go/pkg/mod"
+      - go/save-cache:
+          key: go-mod-v1
+          path: /go/pkg/mod
       - codecov/upload:
           file: cover.out
-      - store_test_results:
+      - store_artifacts:
           path: /tmp/artifacts
+
+  gen-doc-txt:
+    executor: golang
+    working_directory: /go/src/github.com/q1812911733/leetGo
+    steps:
+      - checkout
+      - run: |
+          mkdir -p /tmp/artifacts
+          go doc -all algorithm > /tmp/artifacts/algorithm.txt
+#          go doc -all linknode > /tmp/artifacts/linknode.doc
+#          go doc -all tree > /tmp/artifacts/tree.doc
+#          go doc -all dp > /tmp/artifacts/dp.doc
       - store_artifacts:
           path: /tmp/artifacts
 
@@ -65,11 +87,36 @@ jobs:
 workflows:
   test:
     jobs:
+      - tool/lint:
+          name: lint
+          executor: golang
+          golangci-lint-version: 1.24.0
       - ut:
+          requires:
+            - lint
           filters:
             branches:
               ignore: master
       - coverage:
+          name: test-coverage
+          requires:
+            - lint
+          filters:
+            branches:
+              only: master
+#      - tool/test: # doesn't use mod cache
+#          name: test-coverage
+#          requires:
+#            - lint
+#          executor: golang
+#          codecov-upload: true
+#          filters:
+#            branches:
+#              only: master
+      - gen-doc-txt:
+          requires:
+            - ut
+            - test-coverage
           filters:
             branches:
               only: master
