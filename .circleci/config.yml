@@ -77,7 +77,7 @@ jobs:
       - run: |
           mkdir -p /tmp/artifacts
           go doc -all algorithm > /tmp/artifacts/algorithm.txt
-#          go doc -all linknode > /tmp/artifacts/linknode.doc
+          go doc -all linknode > /tmp/artifacts/linknode.doc
 #          go doc -all tree > /tmp/artifacts/tree.doc
 #          go doc -all dp > /tmp/artifacts/dp.doc
       - store_artifacts:
