@@ -9,8 +9,9 @@ func TestCopySlice(t *testing.T) {
 
 	s1 := make([]int, 3)
 	s1[0], s1[1], s1[2] = 1, 2, 3
-	var s2, s3 []int
-	s2 = append(s2, 1, 2, 3)
+	var s3 []int
+	//var s2 []int
+	//s2 = append(s2, 1, 2, 3)
 	s3 = append(s3, 1, 2, 3, 4)
 
 	s := []struct {
@@ -28,9 +29,9 @@ func TestCopySlice(t *testing.T) {
 		{
 			s1, []int{1, 2, 3, 1}, []int{1, 2, 3, 2},
 		},
-		{
-			s2, []int{1, 2, 3, 2}, []int{1, 2, 3, 2},
-		},
+		//{
+		//	s2, []int{1, 2, 3, 2}, []int{1, 2, 3, 2},
+		//},
 		{
 			s3, []int{1, 2, 3, 4, 1}, []int{1, 2, 3, 4, 2},
 		},
